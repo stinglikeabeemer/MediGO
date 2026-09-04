@@ -15,7 +15,7 @@ class FaskesSeeder extends Seeder
         $firstLine = true;
 
 
-        while (($data = fgetcsv($csvFile, 2000, ",")) !== FALSE) {
+        while (($data = fgetcsv($csvFile, 2000, ";")) !== FALSE) {
             if (!$firstLine) {
                 if (count($data) < 6) {
                     continue;

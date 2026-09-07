@@ -16,6 +16,10 @@ Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 Route::get('/faskes', [FaskesController::class, 'index']);
 Route::get('/faskes/{id}', [FaskesController::class, 'show']);
+Route::post('/faskes', [FaskesController::class, 'store']);
+Route::put('/faskes/{id}', [FaskesController::class, 'update']);
+Route::delete('/faskes/{id}', [FaskesController::class, 'destroy']);
+Route::get('/admin/stats', [FaskesController::class, 'getAdminStats']);
 
 // Rute Terproteksi (Wajib punya Token / udah Login)
 Route::middleware('auth:sanctum')->group(function () {

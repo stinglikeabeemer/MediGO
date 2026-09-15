@@ -13,6 +13,7 @@ class DiscussionController extends Controller
         // 1. Siapkan kerangka query dasar
         $query = DB::table('discussions')
             ->join('users', 'discussions.user_id', '=', 'users.id')
+            ->where('discussions.status', 'active')
             ->select('discussions.*', 'users.name as author_name')
             ->orderBy('discussions.created_at', 'desc');
 
@@ -74,6 +75,7 @@ class DiscussionController extends Controller
         $discussion = DB::table('discussions')
             ->join('users', 'discussions.user_id', '=', 'users.id')
             ->where('discussions.id', $id)
+            ->where('discussions.status', 'active')
             ->select('discussions.*', 'users.name as author_name')
             ->first();
 

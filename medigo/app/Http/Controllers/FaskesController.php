@@ -24,6 +24,29 @@ class FaskesController extends Controller
         return 'other';
     }
 
+    private function formatFaskesName($name, $typeSlug, $tipe = '')
+    {
+        $name = trim($name ?? '');
+        $isPuskesmas = ($typeSlug === 'puskesmas') || str_contains(strtolower($tipe ?? ''), 'puskesmas') || str_contains(strtolower($name), 'puskesmas');
+        if ($isPuskesmas && !preg_match('/^(puskesmas|pkm)\b/i', $name)) {
+            return 'Puskesmas ' . $name;
+        }
+        return $name;
+    }
+
+    private function getGoogleMapsUrl($name, $lat = null, $lng = null, $kota = '', $alamat = '')
+    {
+        $parts = array_filter([trim($name), trim($alamat), trim($kota)]);
+        $queryName = implode(', ', $parts);
+        $encodedName = urlencode($queryName);
+
+        if ($lat && $lng) {
+            return "https://www.google.com/maps/search/{$encodedName}/@{$lat},{$lng},17z";
+        }
+
+        return "https://www.google.com/maps/search/?api=1&query={$encodedName}";
+    }
+
     // 1. Ambil data Faskes (dilengkapi Pencarian, GPS, Rating & Filter)
     public function index(Request $request)
     {
@@ -134,8 +157,14 @@ class FaskesController extends Controller
 
             $faskes->transform(function ($item) use ($comments) {
                 $item->type_slug = $this->getTypeSlug($item->tipe);
-                $item->avg_rating = isset($comments[$item->id]) ? (string)$comments[$item->id]->avg_rating : '0.0';
-                $item->total_reviews = isset($comments[$item->id]) ? (int)$comments[$item->id]->total_reviews : 0;
+                $item->nama_faskes = $this->formatFaskesName($item->nama_faskes, $item->type_slug, $item->tipe);
+                $hasComment = isset($comments[$item->id]) && $comments[$item->id]->total_reviews > 0;
+                $item->avg_rating = $hasComment ? (string)$comments[$item->id]->avg_rating : null;
+                $item->total_reviews = $hasComment ? (int)$comments[$item->id]->total_reviews : 0;
+                $hasSpecific = !empty($item->link_maps) && !in_array($item->link_maps, ['-', 'TRUE', 'FALSE']) && str_starts_with($item->link_maps, 'http') && (str_contains($item->link_maps, '@') || str_contains($item->link_maps, 'place') || str_contains($item->link_maps, 'maps.app.goo.gl') || str_contains($item->link_maps, 'dir'));
+                if (!$hasSpecific) {
+                    $item->link_maps = $this->getGoogleMapsUrl($item->nama_faskes, $item->latitude ?? null, $item->longitude ?? null, $item->kota_kabupaten ?? '', $item->alamat ?? '');
+                }
                 return $item;
             });
 
@@ -159,8 +188,14 @@ class FaskesController extends Controller
 
         $paginated->getCollection()->transform(function ($item) use ($comments) {
             $item->type_slug = $this->getTypeSlug($item->tipe);
-            $item->avg_rating = isset($comments[$item->id]) ? (string)$comments[$item->id]->avg_rating : '0.0';
-            $item->total_reviews = isset($comments[$item->id]) ? (int)$comments[$item->id]->total_reviews : 0;
+            $item->nama_faskes = $this->formatFaskesName($item->nama_faskes, $item->type_slug, $item->tipe);
+            $hasComment = isset($comments[$item->id]) && $comments[$item->id]->total_reviews > 0;
+            $item->avg_rating = $hasComment ? (string)$comments[$item->id]->avg_rating : null;
+            $item->total_reviews = $hasComment ? (int)$comments[$item->id]->total_reviews : 0;
+            $hasSpecific = !empty($item->link_maps) && !in_array($item->link_maps, ['-', 'TRUE', 'FALSE']) && str_starts_with($item->link_maps, 'http') && (str_contains($item->link_maps, '@') || str_contains($item->link_maps, 'place') || str_contains($item->link_maps, 'maps.app.goo.gl') || str_contains($item->link_maps, 'dir'));
+            if (!$hasSpecific) {
+                $item->link_maps = $this->getGoogleMapsUrl($item->nama_faskes, $item->latitude ?? null, $item->longitude ?? null, $item->kota_kabupaten ?? '', $item->alamat ?? '');
+            }
             return $item;
         });
 
@@ -180,7 +215,7 @@ class FaskesController extends Controller
             ->where('faskes.id', $id)
             ->select(
                 'faskes.*',
-                DB::raw('COALESCE(ROUND(AVG(faskes_comments.rating), 1), 0) as avg_rating'),
+                DB::raw('ROUND(AVG(faskes_comments.rating), 1) as avg_rating'),
                 DB::raw('COUNT(faskes_comments.id) as total_reviews')
             )
             ->groupBy('faskes.id')
@@ -191,12 +226,23 @@ class FaskesController extends Controller
         }
 
         $faskes->type_slug = $this->getTypeSlug($faskes->tipe);
+        $faskes->nama_faskes = $this->formatFaskesName($faskes->nama_faskes, $faskes->type_slug, $faskes->tipe);
+        if ($faskes->total_reviews == 0 || $faskes->avg_rating === null) {
+            $faskes->avg_rating = null;
+        } else {
+            $faskes->avg_rating = (string)$faskes->avg_rating;
+        }
+
+        $hasSpecific = !empty($faskes->link_maps) && !in_array($faskes->link_maps, ['-', 'TRUE', 'FALSE']) && str_starts_with($faskes->link_maps, 'http') && (str_contains($faskes->link_maps, '@') || str_contains($faskes->link_maps, 'place') || str_contains($faskes->link_maps, 'maps.app.goo.gl') || str_contains($faskes->link_maps, 'dir'));
+        if (!$hasSpecific) {
+            $faskes->link_maps = $this->getGoogleMapsUrl($faskes->nama_faskes, $faskes->latitude ?? null, $faskes->longitude ?? null, $faskes->kota_kabupaten ?? '', $faskes->alamat ?? '');
+        }
 
         // 2. Ambil semua ulasan dan rating yang terhubung ke faskes ini
         $reviews = DB::table('faskes_comments')
             ->join('users', 'faskes_comments.user_id', '=', 'users.id')
             ->where('faskes_comments.faskes_id', $id)
-            ->select('faskes_comments.*', 'users.name as reviewer_name')
+            ->select('faskes_comments.*', 'users.name as reviewer_name', 'users.email as reviewer_email')
             ->orderBy('faskes_comments.created_at', 'desc')
             ->get();
 

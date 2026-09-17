@@ -71,34 +71,62 @@ class DiscussionController extends Controller
     // 3. Tampilkan detail spesifik satu diskusi
     public function show($id)
     {
-        // 1. Ambil data diskusi utamanya
+        // 1. Ambil diskusi (DENGAN SELECT AGAR ID TIDAK TERTIMPA USER ID)
         $discussion = DB::table('discussions')
             ->join('users', 'discussions.user_id', '=', 'users.id')
             ->where('discussions.id', $id)
-            ->where('discussions.status', 'active')
-            ->select('discussions.*', 'users.name as author_name')
+            ->select('discussions.*', 'users.name as author_name') // <--- INI KUNCI PERBAIKANNYA
             ->first();
 
         if (!$discussion) {
             return response()->json(['message' => 'Diskusi tidak ditemukan'], 404);
         }
 
-        // 2. Ambil semua komentar yang nyambung sama diskusi ini
+        // 2. Ambil komentar (sudah aman karena pakai select)
         $comments = DB::table('discussion_comments')
             ->join('users', 'discussion_comments.user_id', '=', 'users.id')
             ->where('discussion_comments.discussion_id', $id)
             ->select('discussion_comments.*', 'users.name as commentator_name')
-            ->orderBy('discussion_comments.created_at', 'asc') // Urutkan dari yang paling lama ke baru
+            ->orderBy('discussion_comments.created_at', 'asc')
             ->get();
 
-        // 3. Gabungin dan kirim ke frontend
         return response()->json([
-            'message' => 'Berhasil mengambil detail diskusi',
+            'message' => 'Berhasil',
             'data' => [
                 'discussion' => $discussion,
                 'comments' => $comments
             ]
         ]);
+    }
+
+    // 4. Laporkan diskusi (Report)
+    public function report(Request $request, $id)
+    {
+        // Validasi alasan pelaporan
+        $request->validate([
+            'reason' => 'required|string|max:1000'
+        ]);
+
+        // Cek apakah diskusinya ada
+        $discussionExists = DB::table('discussions')->where('id', $id)->exists();
+        
+        if (!$discussionExists) {
+            return response()->json(['message' => 'Diskusi tidak ditemukan'], 404);
+        }
+
+        // Simpan laporan ke database
+        DB::table('discussion_reports')->insert([
+            'discussion_id' => $id,
+            'user_id'       => $request->user()->id, // Asumsi pakai auth sanctum
+            'reason'        => $request->input('reason'),
+            'status'        => 'pending', // Status awal: menunggu tinjauan admin
+            'created_at'    => now(),
+            'updated_at'    => now(),
+        ]);
+
+        return response()->json([
+            'message' => 'Laporan berhasil dikirim dan akan segera ditinjau oleh tim kami.'
+        ], 201);
     }
 }
 

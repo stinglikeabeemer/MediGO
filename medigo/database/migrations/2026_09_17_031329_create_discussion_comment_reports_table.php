@@ -7,24 +7,23 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('discussion_reports', function (Blueprint $table) {
+        Schema::create('discussion_comment_reports', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('discussion_id');
+            $table->unsignedBigInteger('comment_id');
             $table->unsignedBigInteger('user_id'); // User yang melaporkan
             $table->text('reason');
-            $table->string('status')->default('pending'); // pending, reviewed, resolved
+            $table->string('status')->default('pending');
             $table->timestamps();
 
-            $table->foreign('discussion_id')->references('id')->on('discussions')->onDelete('cascade');
+            $table->foreign('comment_id')->references('id')->on('discussion_comments')->onDelete('cascade');
             $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
         });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('discussion_reports');
+        Schema::dropIfExists('discussion_comment_reports');
     }
 };
-
 
 ?>

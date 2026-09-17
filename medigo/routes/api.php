@@ -52,6 +52,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Rute Tambah Komentar di Diskusi
     Route::post('/discussions/{discussion_id}/comments', [DiscussionCommentController::class, 'store']);
+    // Route untuk melaporkan komentar
+    Route::post('/comments/{id}/report', [DiscussionCommentController::class, 'report']);
 
     // Rute Report Diskusi
     Route::post('/discussions/{id}/report', [DiscussionReportController::class, 'store']);

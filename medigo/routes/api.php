@@ -37,6 +37,9 @@ Route::middleware('auth:sanctum')->group(function () {
         return $request->user();
     });
 
+    Route::get('/user/discussions', [DiscussionController::class, 'myDiscussions']);
+    Route::get('/user/comments', [DiscussionController::class, 'myComments']);
+
     // Rute Bookmark (Wajib bawa Token)
     Route::get('/bookmarks', [BookmarkController::class, 'index']);
     Route::post('/faskes/{faskes_id}/bookmark', [BookmarkController::class, 'toggleBookmark']);
@@ -54,7 +57,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/discussions/{discussion_id}/comments', [DiscussionCommentController::class, 'store']);
     // Route untuk melaporkan komentar
     Route::post('/comments/{id}/report', [DiscussionCommentController::class, 'report']);
-
+    Route::delete('/discussion-comments/{id}', [DiscussionCommentController::class, 'destroy']);
     // Rute Report Diskusi
     Route::post('/discussions/{id}/report', [DiscussionReportController::class, 'store']);
 

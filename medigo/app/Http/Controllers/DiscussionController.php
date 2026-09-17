@@ -128,5 +128,44 @@ class DiscussionController extends Controller
             'message' => 'Laporan berhasil dikirim dan akan segera ditinjau oleh tim kami.'
         ], 201);
     }
+
+    // 5. Mengambil riwayat diskusi milik user yang sedang login
+    public function myDiscussions(Request $request)
+    {
+        $userId = $request->user()->id;
+
+        $discussions = DB::table('discussions')
+            ->join('users', 'discussions.user_id', '=', 'users.id')
+            ->where('discussions.user_id', $userId)
+            ->select('discussions.*', 'users.name as author_name')
+            ->orderBy('discussions.created_at', 'desc')
+            ->get();
+
+        return response()->json([
+            'message' => 'Berhasil mengambil daftar diskusi saya',
+            'data' => $discussions
+        ]);
+    }
+
+    // 6. Mengambil riwayat tanggapan/komentar milik user yang sedang login
+    public function myComments(Request $request)
+    {
+        $userId = $request->user()->id;
+
+        $comments = DB::table('discussion_comments')
+            ->join('discussions', 'discussion_comments.discussion_id', '=', 'discussions.id')
+            ->where('discussion_comments.user_id', $userId)
+            ->select(
+                'discussion_comments.*',
+                'discussions.title as discussion_title'
+            )
+            ->orderBy('discussion_comments.created_at', 'desc')
+            ->get();
+
+        return response()->json([
+            'message' => 'Berhasil mengambil daftar tanggapan saya',
+            'data' => $comments
+        ]);
+    }
 }
 

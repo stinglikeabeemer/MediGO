@@ -80,4 +80,16 @@ class DiscussionCommentController extends Controller
             'message' => 'Laporan komentar berhasil dikirim dan akan segera ditinjau.'
         ], 201);
     }
+
+    public function destroy(Request $request, $id) {
+    $comment = DiscussionComment::find($id);
+    if (!$comment) return response()->json(['message' => 'Komentar tidak ditemukan'], 404);
+
+    if ($comment->user_id !== $request->user()->id && !$request->user()->isAdmin()) {
+        return response()->json(['message' => 'Unauthorized'], 403);
+    }
+
+    $comment->delete();
+    return response()->json(['message' => 'Balasan berhasil dihapus']);
+}
 }

@@ -18,12 +18,28 @@ class FaskesCommentController extends Controller
             return response()->json(['message' => 'Fasilitas kesehatan tidak ditemukan'], 404);
         }
 
-        // Determine current user ID if token provided or passed as query
+        // Determine current user ID via Sanctum token, email, or direct parameter
         $currentUserId = null;
+        $currentUserEmail = $request->input('current_user_email');
         if ($request->user()) {
             $currentUserId = $request->user()->id;
+            $currentUserEmail = $request->user()->email;
+        } elseif ($bearer = $request->bearerToken()) {
+            $tokenObj = \Laravel\Sanctum\PersonalAccessToken::findToken($bearer);
+            if ($tokenObj && $tokenObj->tokenable) {
+                $currentUserId = $tokenObj->tokenable->id;
+                $currentUserEmail = $tokenObj->tokenable->email;
+            }
         } elseif ($request->filled('current_user_id')) {
             $currentUserId = (int)$request->current_user_id;
+        }
+
+        // If user ID is still null but user email is provided, lookup in users table
+        if (!$currentUserId && $currentUserEmail) {
+            $matchedUser = DB::table('users')->where('email', $currentUserEmail)->first();
+            if ($matchedUser) {
+                $currentUserId = $matchedUser->id;
+            }
         }
 
         $perPage = (int)$request->input('per_page', $request->input('limit', 5));
@@ -388,6 +404,162 @@ class FaskesCommentController extends Controller
                 'total_reviews' => $totalReviews,
                 'has_more' => $hasMore,
             ]
+        ]);
+    }
+
+    /**
+     * Report an offensive or inappropriate faskes comment
+     */
+    public function report(Request $request, $id)
+    {
+        $request->validate([
+            'reason' => 'required|string|max:150',
+            'notes'  => 'nullable|string|max:1000',
+        ]);
+
+        $comment = DB::table('faskes_comments')->where('id', $id)->first();
+        if (!$comment) {
+            return response()->json(['status' => 'error', 'message' => 'Ulasan tidak ditemukan.'], 404);
+        }
+
+        $currentUser = $request->user();
+        if (!$currentUser && ($bearer = $request->bearerToken())) {
+            $tokenObj = \Laravel\Sanctum\PersonalAccessToken::findToken($bearer);
+            if ($tokenObj && $tokenObj->tokenable) {
+                $currentUser = $tokenObj->tokenable;
+            }
+        }
+
+        if (!$currentUser) {
+            return response()->json(['status' => 'error', 'message' => 'Silakan masuk terlebih dahulu untuk melaporkan ulasan.'], 401);
+        }
+
+        // Prevent reporting own comment
+        if ($comment->user_id == $currentUser->id) {
+            return response()->json(['status' => 'error', 'message' => 'Anda tidak dapat melaporkan ulasan Anda sendiri.'], 422);
+        }
+
+        // Check if already reported by this user
+        $alreadyReported = DB::table('faskes_comment_reports')
+            ->where('comment_id', $id)
+            ->where('user_id', $currentUser->id)
+            ->exists();
+
+        if ($alreadyReported) {
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Anda sudah pernah melaporkan ulasan ini sebelumnya. Laporan Anda sedang dalam antrean peninjauan admin.'
+            ]);
+        }
+
+        DB::table('faskes_comment_reports')->insert([
+            'comment_id' => $id,
+            'faskes_id'  => $comment->faskes_id,
+            'user_id'    => $currentUser->id,
+            'reason'     => $request->input('reason'),
+            'notes'      => $request->input('notes'),
+            'status'     => 'pending',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Laporan berhasil dikirim. Terima kasih atas bantuan Anda menjaga komunitas MediGO tetap aman dan sopan.'
+        ], 201);
+    }
+
+    /**
+     * Admin: Get all reported comments
+     */
+    public function indexAdminReports(Request $request)
+    {
+        $reports = DB::table('faskes_comment_reports')
+            ->join('users as reporter', 'faskes_comment_reports.user_id', '=', 'reporter.id')
+            ->join('faskes', 'faskes_comment_reports.faskes_id', '=', 'faskes.id')
+            ->leftJoin('faskes_comments', 'faskes_comment_reports.comment_id', '=', 'faskes_comments.id')
+            ->leftJoin('users as author', 'faskes_comments.user_id', '=', 'author.id')
+            ->select(
+                'faskes_comment_reports.*',
+                'reporter.name as reporter_name',
+                'reporter.email as reporter_email',
+                'faskes.nama_faskes',
+                'faskes.kota_kabupaten',
+                'faskes_comments.body as comment_body',
+                'faskes_comments.rating as comment_rating',
+                'faskes_comments.created_at as comment_created_at',
+                'author.name as author_name',
+                'author.email as author_email'
+            )
+            ->orderBy('faskes_comment_reports.created_at', 'desc')
+            ->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $reports
+        ]);
+    }
+
+    /**
+     * Admin: Takedown/Delete a reported comment
+     */
+    public function takedownReportAdmin(Request $request, $id)
+    {
+        $report = DB::table('faskes_comment_reports')->where('id', $id)->first();
+        if (!$report) {
+            return response()->json(['status' => 'error', 'message' => 'Laporan tidak ditemukan.'], 404);
+        }
+
+        $comment = DB::table('faskes_comments')->where('id', $report->comment_id)->first();
+        if ($comment) {
+            $faskesId = $comment->faskes_id;
+            DB::table('faskes_comments')->where('id', $report->comment_id)->delete();
+            $this->getRatingBreakdownStats($faskesId);
+        }
+
+        // Mark all reports for this comment as resolved
+        DB::table('faskes_comment_reports')
+            ->where('comment_id', $report->comment_id)
+            ->update([
+                'status' => 'resolved',
+                'updated_at' => now(),
+            ]);
+
+        // Optional activity log
+        try {
+            DB::table('activity_logs')->insert([
+                'user_id' => $request->user() ? $request->user()->id : $report->user_id,
+                'action_type' => 'Takedown Komentar Faskes',
+                'description' => 'Admin menghapus komentar ulasan faskes ID: ' . $report->comment_id . ' karena laporan pengguna.',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        } catch (\Exception $e) {}
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Komentar berhasil di-takedown dan dihapus dari fasilitas kesehatan.'
+        ]);
+    }
+
+    /**
+     * Admin: Dismiss a report
+     */
+    public function dismissReportAdmin(Request $request, $id)
+    {
+        $report = DB::table('faskes_comment_reports')->where('id', $id)->first();
+        if (!$report) {
+            return response()->json(['status' => 'error', 'message' => 'Laporan tidak ditemukan.'], 404);
+        }
+
+        DB::table('faskes_comment_reports')->where('id', $id)->update([
+            'status' => 'dismissed',
+            'updated_at' => now(),
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Laporan berhasil diabaikan/ditandai tidak melanggar aturan.'
         ]);
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class DiscussionReportController extends Controller
 {
@@ -13,19 +14,24 @@ class DiscussionReportController extends Controller
         ]);
 
         // Pastikan diskusi ada dan belum di takedown
-        $discussion = \Illuminate\Support\Facades\DB::table('discussions')
-            ->where('id', $discussionId)
-            ->where('status', 'active')
+        $discussion = DB::table('diskusi')
+            ->where('id_diskusi', $discussionId)
+            ->where('status_diskusi', 'active')
             ->first();
 
         if (!$discussion) {
             return response()->json(['message' => 'Diskusi tidak ditemukan atau sudah dihapus'], 404);
         }
 
-        \App\Models\DiscussionReport::create([
-            'discussion_id' => $discussionId,
-            'user_id' => $request->user()->id,
-            'reason' => $request->reason
+        $userId = $request->user()->id_user ?? $request->user()->id;
+
+        DB::table('laporan_diskusi')->insert([
+            'id_diskusi' => $discussionId,
+            'id_user' => $userId,
+            'alasan_laporan' => $request->reason,
+            'status' => 'pending',
+            'created_at' => now(),
+            'updated_at' => now()
         ]);
 
         return response()->json(['message' => 'Laporan berhasil dikirim'], 201);
@@ -34,11 +40,16 @@ class DiscussionReportController extends Controller
     public function indexAdmin()
     {
         // Ambil semua laporan beserta detail diskusi dan user pelapor
-        $reports = \Illuminate\Support\Facades\DB::table('discussion_reports')
-            ->join('users', 'discussion_reports.user_id', '=', 'users.id')
-            ->join('discussions', 'discussion_reports.discussion_id', '=', 'discussions.id')
-            ->select('discussion_reports.*', 'users.name as reporter_name', 'discussions.title as discussion_title', 'discussions.status as discussion_status')
-            ->orderBy('discussion_reports.created_at', 'desc')
+        $reports = DB::table('laporan_diskusi')
+            ->join('user', 'laporan_diskusi.id_user', '=', 'user.id_user')
+            ->join('diskusi', 'laporan_diskusi.id_diskusi', '=', 'diskusi.id_diskusi')
+            ->select(
+                'laporan_diskusi.*',
+                'user.nama_user as reporter_name',
+                'diskusi.judul_diskusi as discussion_title',
+                'diskusi.status_diskusi as discussion_status'
+            )
+            ->orderBy('laporan_diskusi.created_at', 'desc')
             ->get();
 
         return response()->json([
@@ -49,23 +60,29 @@ class DiscussionReportController extends Controller
 
     public function takedown(Request $request, $discussionId)
     {
-        $discussion = \Illuminate\Support\Facades\DB::table('discussions')
-            ->where('id', $discussionId)
+        $discussion = DB::table('diskusi')
+            ->where('id_diskusi', $discussionId)
             ->first();
 
         if (!$discussion) {
             return response()->json(['message' => 'Diskusi tidak ditemukan'], 404);
         }
 
-        \Illuminate\Support\Facades\DB::table('discussions')
-            ->where('id', $discussionId)
-            ->update(['status' => 'takedown', 'updated_at' => now()]);
+        // Ubah status jadi 'deleted' agar seragam dengan fungsi destroy di DiscussionController
+        DB::table('diskusi')
+            ->where('id_diskusi', $discussionId)
+            ->update([
+                'status_diskusi' => 'deleted',
+                'updated_at' => now()
+            ]);
+
+        $adminId = $request->user()->id_user ?? $request->user()->id;
 
         // Catat ke Log Aktivitas (Admin)
-        \Illuminate\Support\Facades\DB::table('activity_logs')->insert([
-            'user_id' => $request->user()->id, // Asumsi admin login
-            'action_type' => 'Takedown Diskusi',
-            'description' => 'Admin menghapus (takedown) diskusi dengan ID: ' . $discussionId,
+        DB::table('log_aktivitas')->insert([
+            'id_user' => $adminId,
+            'tipe_aksi' => 'Takedown Diskusi',
+            'deskripsi' => 'Admin menghapus (takedown) diskusi dengan ID: ' . $discussionId,
             'created_at' => now(),
             'updated_at' => now(),
         ]);

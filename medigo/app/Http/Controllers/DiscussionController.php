@@ -11,28 +11,28 @@ class DiscussionController extends Controller
     public function index(Request $request)
     {
         // 1. Siapkan kerangka query dasar dengan penghitungan real comments_count dan email author
-        $query = DB::table('discussions')
-            ->join('users', 'discussions.user_id', '=', 'users.id')
-            ->where('discussions.status', 'active')
+        $query = DB::table('diskusi')
+            ->join('user', 'diskusi.id_user', '=', 'user.id_user')
+            ->where('diskusi.status_diskusi', 'active')
             ->select(
-                'discussions.*',
-                'users.name as author_name',
-                'users.email as author_email',
-                DB::raw('(SELECT COUNT(*) FROM discussion_comments WHERE discussion_comments.discussion_id = discussions.id) as comments_count')
+                'diskusi.*',
+                'user.nama_user as author_name',
+                'user.email_user as author_email',
+                DB::raw('(SELECT COUNT(*) FROM tanggapan_diskusi WHERE tanggapan_diskusi.id_diskusi = diskusi.id_diskusi) as comments_count')
             )
-            ->orderBy('discussions.created_at', 'desc');
+            ->orderBy('diskusi.created_at', 'desc');
 
         // 2. Cek apakah ada request filter kategori
         if ($request->has('category') && !empty($request->query('category'))) {
             $cat = $request->query('category');
             if ($cat === 'BPJS') {
-                $query->whereIn('discussions.category', ['BPJS', 'BPJS & Asuransi', 'Tanya BPJS']);
+                $query->whereIn('diskusi.kategori', ['BPJS', 'BPJS & Asuransi', 'Tanya BPJS']);
             } elseif ($cat === 'Rekomendasi RS') {
-                $query->whereIn('discussions.category', ['Rekomendasi RS', 'Rekomendasi', 'Rekomendasi Faskes']);
+                $query->whereIn('diskusi.kategori', ['Rekomendasi RS', 'Rekomendasi', 'Rekomendasi Faskes']);
             } elseif ($cat === 'Tips Kesehatan') {
-                $query->whereIn('discussions.category', ['Tips Kesehatan', 'Tips & Informasi']);
+                $query->whereIn('diskusi.kategori', ['Tips Kesehatan', 'Tips & Informasi']);
             } else {
-                $query->where('discussions.category', $cat);
+                $query->where('diskusi.kategori', $cat);
             }
         }
 
@@ -57,7 +57,7 @@ class DiscussionController extends Controller
             'image' => 'nullable|image|max:5120',
         ]);
 
-        $user_id = $request->user()->id;
+        $user_id = $request->user()->id_user ?? $request->user()->id;
 
         $imageUrls = [];
         if ($request->hasFile('images')) {
@@ -78,23 +78,23 @@ class DiscussionController extends Controller
         $firstImage = !empty($imageUrls) ? $imageUrls[0] : null;
         $imagesJson = !empty($imageUrls) ? json_encode($imageUrls) : null;
 
-        $discussionId = DB::table('discussions')->insertGetId([
-            'user_id' => $user_id,
-            'title' => $request->input('title'),
-            'body' => $request->input('content'),
-            'category' => $request->input('category', 'Umum'),
-            'image_path' => $firstImage,
+        $discussionId = DB::table('diskusi')->insertGetId([
+            'id_user' => $user_id,
+            'judul_diskusi' => $request->input('title'),
+            'isi_diskusi' => $request->input('content'),
+            'kategori' => $request->input('category', 'Umum'),
+            'gambar_diskusi' => $firstImage,
             'images' => $imagesJson,
-            'status' => 'active',
+            'status_diskusi' => 'active',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
 
         // Catat ke Log Aktivitas
-        DB::table('activity_logs')->insert([
-            'user_id' => $user_id,
-            'action_type' => 'Buat Diskusi',
-            'description' => 'Membuat diskusi baru dengan judul: ' . $request->input('title'),
+        DB::table('log_aktivitas')->insert([
+            'id_user' => $user_id,
+            'tipe_aksi' => 'Buat Diskusi',
+            'deskripsi' => 'Membuat diskusi baru dengan judul: ' . $request->input('title'),
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -107,24 +107,25 @@ class DiscussionController extends Controller
 
     public function show(Request $request, $id)
     {
-        $currentUser = $request->user(); 
+        $currentUser = $request->user();
+        $currentUserId = $currentUser ? ($currentUser->id_user ?? $currentUser->id) : null;
 
-        $discussion = DB::table('discussions')
-            ->join('users', 'discussions.user_id', '=', 'users.id')
-            ->where('discussions.id', $id)
+        $discussion = DB::table('diskusi')
+            ->join('user', 'diskusi.id_user', '=', 'user.id_user')
+            ->where('diskusi.id_diskusi', $id)
             ->select(
-                'discussions.id as id', 
-                'discussions.user_id as user_id', 
-                'discussions.title', 
-                'discussions.body', 
-                'discussions.category', 
-                'discussions.image_path',
-                'discussions.images',
-                'discussions.status', 
-                'discussions.created_at',
-                'users.name as author_name',
-                'users.email as author_email'
-            ) 
+                'diskusi.id_diskusi as id',
+                'diskusi.id_user as user_id',
+                'diskusi.judul_diskusi as title',
+                'diskusi.isi_diskusi as body',
+                'diskusi.kategori as category',
+                'diskusi.gambar_diskusi as image_path',
+                'diskusi.images',
+                'diskusi.status_diskusi as status',
+                'diskusi.created_at',
+                'user.nama_user as author_name',
+                'user.email_user as author_email'
+            )
             ->first();
 
         if (!$discussion) {
@@ -144,29 +145,29 @@ class DiscussionController extends Controller
         }
         $discussion->images_list = $imagesList;
 
-        $comments = DB::table('discussion_comments')
-        ->join('users', 'discussion_comments.user_id', '=', 'users.id')
-        ->where('discussion_comments.discussion_id', $id)
-        ->select(
-            'discussion_comments.id as id',
-            'discussion_comments.user_id as user_id',
-            'discussion_comments.discussion_id',
-            'discussion_comments.parent_id',
-            'discussion_comments.body',
-            'discussion_comments.image_path',
-            'discussion_comments.created_at',
-            'users.name as commentator_name',
-            'users.email as commentator_email'
-        )
-        ->orderBy('discussion_comments.created_at', 'asc')
-        ->get();
+        $comments = DB::table('tanggapan_diskusi')
+            ->join('user', 'tanggapan_diskusi.id_user', '=', 'user.id_user')
+            ->where('tanggapan_diskusi.id_diskusi', $id)
+            ->select(
+                'tanggapan_diskusi.id_tanggapan as id',
+                'tanggapan_diskusi.id_user as user_id',
+                'tanggapan_diskusi.id_diskusi as discussion_id',
+                'tanggapan_diskusi.id_parent as parent_id',
+                'tanggapan_diskusi.isi_tanggapan as body',
+                'tanggapan_diskusi.gambar_tanggapan as image_path',
+                'tanggapan_diskusi.created_at',
+                'user.nama_user as commentator_name',
+                'user.email_user as commentator_email'
+            )
+            ->orderBy('tanggapan_diskusi.created_at', 'asc')
+            ->get();
 
         return response()->json([
             'message' => 'Berhasil',
             'data' => [
                 'discussion' => $discussion,
                 'comments' => $comments,
-                'logged_in_user_id' => $currentUser ? $currentUser->id : null 
+                'logged_in_user_id' => $currentUserId
             ]
         ]);
     }
@@ -180,20 +181,22 @@ class DiscussionController extends Controller
         ]);
 
         // Cek apakah diskusinya ada
-        $discussionExists = DB::table('discussions')->where('id', $id)->exists();
-        
+        $discussionExists = DB::table('diskusi')->where('id_diskusi', $id)->exists();
+
         if (!$discussionExists) {
             return response()->json(['message' => 'Diskusi tidak ditemukan'], 404);
         }
 
+        $user_id = $request->user()->id_user ?? $request->user()->id;
+
         // Simpan laporan ke database
-        DB::table('discussion_reports')->insert([
-            'discussion_id' => $id,
-            'user_id'       => $request->user()->id, // Asumsi pakai auth sanctum
-            'reason'        => $request->input('reason'),
-            'status'        => 'pending', // Status awal: menunggu tinjauan admin
-            'created_at'    => now(),
-            'updated_at'    => now(),
+        DB::table('laporan_diskusi')->insert([
+            'id_diskusi' => $id,
+            'id_user' => $user_id, // Asumsi pakai auth sanctum
+            'alasan_laporan' => $request->input('reason'),
+            'status' => 'pending', // Status awal: menunggu tinjauan admin
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         return response()->json([
@@ -204,13 +207,13 @@ class DiscussionController extends Controller
     // 5. Mengambil riwayat diskusi milik user yang sedang login
     public function myDiscussions(Request $request)
     {
-        $userId = $request->user()->id;
+        $userId = $request->user()->id_user ?? $request->user()->id;
 
-        $discussions = DB::table('discussions')
-            ->join('users', 'discussions.user_id', '=', 'users.id')
-            ->where('discussions.user_id', $userId)
-            ->select('discussions.*', 'users.name as author_name')
-            ->orderBy('discussions.created_at', 'desc')
+        $discussions = DB::table('diskusi')
+            ->join('user', 'diskusi.id_user', '=', 'user.id_user')
+            ->where('diskusi.id_user', $userId)
+            ->select('diskusi.*', 'user.nama_user as author_name')
+            ->orderBy('diskusi.created_at', 'desc')
             ->get();
 
         return response()->json([
@@ -222,16 +225,16 @@ class DiscussionController extends Controller
     // 6. Mengambil riwayat tanggapan/komentar milik user yang sedang login
     public function myComments(Request $request)
     {
-        $userId = $request->user()->id;
+        $userId = $request->user()->id_user ?? $request->user()->id;
 
-        $comments = DB::table('discussion_comments')
-            ->join('discussions', 'discussion_comments.discussion_id', '=', 'discussions.id')
-            ->where('discussion_comments.user_id', $userId)
+        $comments = DB::table('tanggapan_diskusi')
+            ->join('diskusi', 'tanggapan_diskusi.id_diskusi', '=', 'diskusi.id_diskusi')
+            ->where('tanggapan_diskusi.id_user', $userId)
             ->select(
-                'discussion_comments.*',
-                'discussions.title as discussion_title'
+                'tanggapan_diskusi.*',
+                'diskusi.judul_diskusi as discussion_title'
             )
-            ->orderBy('discussion_comments.created_at', 'desc')
+            ->orderBy('tanggapan_diskusi.created_at', 'desc')
             ->get();
 
         return response()->json([
@@ -243,27 +246,27 @@ class DiscussionController extends Controller
     // 7. Hapus diskusi milik user sendiri
     public function destroy(Request $request, $id)
     {
-        $userId = $request->user()->id;
+        $userId = $request->user()->id_user ?? $request->user()->id;
 
-        $discussion = DB::table('discussions')->where('id', $id)->first();
+        $discussion = DB::table('diskusi')->where('id_diskusi', $id)->first();
 
         if (!$discussion) {
             return response()->json(['status' => 'error', 'message' => 'Diskusi tidak ditemukan'], 404);
         }
 
-        $isAdmin = method_exists($request->user(), 'isAdmin') && $request->user()->isAdmin();
-        
-        // [FIXED] Gunakan casting (int) untuk pencegahan mismatch tipe data
-        if ((int) $discussion->user_id !== (int) $userId && !$isAdmin) {
+        $userRole = $request->user()->role_user ?? $request->user()->role ?? '';
+        $isAdmin = method_exists($request->user(), 'isAdmin') ? $request->user()->isAdmin() : ($userRole === 'admin');
+
+        // Gunakan casting (int) untuk pencegahan mismatch tipe data
+        if ((int) $discussion->id_user !== (int) $userId && !$isAdmin) {
             return response()->json(['status' => 'error', 'message' => 'Anda tidak memiliki izin untuk menghapus diskusi ini'], 403);
         }
 
-        DB::table('discussions')->where('id', $id)->update([
-            'status'     => 'deleted',
+        DB::table('diskusi')->where('id_diskusi', $id)->update([
+            'status_diskusi' => 'deleted',
             'updated_at' => now(),
         ]);
 
         return response()->json(['status' => 'success', 'message' => 'Diskusi berhasil dihapus']);
     }
 }
-

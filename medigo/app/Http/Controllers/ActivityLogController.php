@@ -10,10 +10,10 @@ class ActivityLogController extends Controller
     public function index(Request $request)
     {
         // Narik semua data log dan gabungin sama nama user
-        $logs = DB::table('activity_logs')
-            ->join('users', 'activity_logs.user_id', '=', 'users.id')
-            ->select('activity_logs.*', 'users.name as user_name')
-            ->orderBy('activity_logs.created_at', 'desc')
+        $logs = DB::table('log_aktivitas')
+            ->join('user', 'log_aktivitas.id_user', '=', 'user.id_user')
+            ->select('log_aktivitas.*', 'user.nama_user as user_name')
+            ->orderBy('log_aktivitas.created_at', 'desc')
             ->paginate(10);
 
         return response()->json([

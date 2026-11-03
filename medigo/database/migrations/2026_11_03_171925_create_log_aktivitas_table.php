@@ -10,13 +10,14 @@ return new class extends Migration {
      */
     public function up(): void
     {
-        Schema::create('activity_logs', function (Blueprint $table) {
-            $table->id();
-            // Siapa aktornya
-            $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
-            $table->string('action_type', 100);
-            $table->text('description');
+        Schema::create('log_aktivitas', function (Blueprint $table) {
+            $table->id('id_log');
+            $table->unsignedBigInteger('id_user');
+            $table->string('tipe_aksi', 255);
+            $table->text('deskripsi');
             $table->timestamps();
+
+            $table->foreign('id_user')->references('id_user')->on('user')->onDelete('cascade');
         });
     }
 
@@ -25,6 +26,6 @@ return new class extends Migration {
      */
     public function down(): void
     {
-        Schema::dropIfExists('activity_logs');
+        Schema::dropIfExists('log_aktivitas');
     }
 };

@@ -11,9 +11,9 @@ class FaskesController extends Controller
     /**
      * Map faskes type to a frontend-friendly slug.
      */
-    private function getTypeSlug($tipe)
+    private function getTypeSlug($jenis_faskes)
     {
-        $tipeLower = strtolower($tipe ?? '');
+        $tipeLower = strtolower($jenis_faskes ?? '');
         if (str_contains($tipeLower, 'rumah sakit') || str_contains($tipeLower, 'rs')) {
             return 'hospital';
         } elseif (str_contains($tipeLower, 'puskesmas')) {
@@ -24,19 +24,19 @@ class FaskesController extends Controller
         return 'other';
     }
 
-    private function formatFaskesName($name, $typeSlug, $tipe = '')
+    private function formatFaskesName($name, $typeSlug, $jenis_faskes = '')
     {
         $name = trim($name ?? '');
-        $isPuskesmas = ($typeSlug === 'puskesmas') || str_contains(strtolower($tipe ?? ''), 'puskesmas') || str_contains(strtolower($name), 'puskesmas');
+        $isPuskesmas = ($typeSlug === 'puskesmas') || str_contains(strtolower($jenis_faskes ?? ''), 'puskesmas') || str_contains(strtolower($name), 'puskesmas');
         if ($isPuskesmas && !preg_match('/^(puskesmas|pkm)\b/i', $name)) {
             return 'Puskesmas ' . $name;
         }
         return $name;
     }
 
-    private function getGoogleMapsUrl($name, $lat = null, $lng = null, $kota = '', $alamat = '')
+    private function getGoogleMapsUrl($name, $lat = null, $lng = null, $kota = '', $alamat_faskes = '')
     {
-        $parts = array_filter([trim($name), trim($alamat), trim($kota)]);
+        $parts = array_filter([trim($name), trim($alamat_faskes), trim($kota)]);
         $queryName = implode(', ', $parts);
         $encodedName = urlencode($queryName);
 
@@ -57,36 +57,36 @@ class FaskesController extends Controller
             $search = trim($request->search);
             $query->where(function ($q) use ($search) {
                 $q->where('faskes.nama_faskes', 'like', "%{$search}%")
-                  ->orWhere('faskes.alamat', 'like', "%{$search}%")
-                  ->orWhere('faskes.kota_kabupaten', 'like', "%{$search}%")
-                  ->orWhere('faskes.provinsi', 'like', "%{$search}%");
+                    ->orWhere('faskes.alamat_faskes', 'like', "%{$search}%")
+                    ->orWhere('faskes.kota_kabupaten', 'like', "%{$search}%")
+                    ->orWhere('faskes.provinsi', 'like', "%{$search}%");
             });
         }
 
         // Filter BPJS (1 / 0 / true / false)
-        if ($request->has('bpjs') && $request->bpjs !== null && $request->bpjs !== '') {
-            $bpjsVal = filter_var($request->bpjs, FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
-            $query->where('faskes.is_support_bpjs', $bpjsVal);
+        if ($request->has('_support_bpjs') && $request->_support_bpjs !== null && $request->_support_bpjs !== '') {
+            $bpjsVal = filter_var($request->_support_bpjs, FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
+            $query->where('faskes._support_bpjs', $bpjsVal);
         }
 
         // Filter Jenis / Tipe Faskes
-        if ($request->filled('jenis') || $request->filled('tipe') || $request->filled('type')) {
-            $typeInput = $request->input('jenis') ?? $request->input('tipe') ?? $request->input('type');
+        if ($request->filled('jenis_faskes') || $request->filled('tipe') || $request->filled('type')) {
+            $typeInput = $request->input('jenis_faskes') ?? $request->input('tipe') ?? $request->input('type');
             if ($typeInput === 'hospital') {
                 $query->where(function ($q) {
-                    $q->where('faskes.tipe', 'like', '%Rumah Sakit%')
-                      ->orWhere('faskes.tipe', 'like', '%RS%');
+                    $q->where('faskes.jenis_faskes', 'like', '%Rumah Sakit%')
+                        ->orWhere('faskes.jenis_faskes', 'like', '%RS%');
                 });
             } elseif ($typeInput === 'clinic') {
                 $query->where(function ($q) {
-                    $q->where('faskes.tipe', 'like', '%Klinik%')
-                      ->orWhere('faskes.tipe', 'like', '%Dokter%')
-                      ->orWhere('faskes.tipe', 'like', '%Apotek%');
+                    $q->where('faskes.jenis_faskes', 'like', '%Klinik%')
+                        ->orWhere('faskes.jenis_faskes', 'like', '%Dokter%')
+                        ->orWhere('faskes.jenis_faskes', 'like', '%Apotek%');
                 });
             } elseif ($typeInput === 'puskesmas') {
-                $query->where('faskes.tipe', 'like', '%Puskesmas%');
+                $query->where('faskes.jenis_faskes', 'like', '%Puskesmas%');
             } else {
-                $query->where('faskes.tipe', 'like', "%{$typeInput}%");
+                $query->where('faskes.jenis_faskes', 'like', "%{$typeInput}%");
             }
         }
 
@@ -106,15 +106,15 @@ class FaskesController extends Controller
             $lokasi = trim($request->lokasi);
             $query->where(function ($q) use ($lokasi) {
                 $q->where('faskes.kota_kabupaten', 'like', "%{$lokasi}%")
-                  ->orWhere('faskes.provinsi', 'like', "%{$lokasi}%")
-                  ->orWhere('faskes.alamat', 'like', "%{$lokasi}%");
+                    ->orWhere('faskes.provinsi', 'like', "%{$lokasi}%")
+                    ->orWhere('faskes.alamat_faskes', 'like', "%{$lokasi}%");
             });
         }
 
         // Filter Hanya yang memiliki koordinat GPS
         if ($request->boolean('with_coords') || $request->input('with_coords') == '1') {
             $query->whereNotNull('faskes.latitude')
-                  ->whereNotNull('faskes.longitude');
+                ->whereNotNull('faskes.longitude');
         }
 
         // Filter & Urutkan Berdasarkan Jarak GPS jika lat & lng dikirimkan
@@ -124,11 +124,11 @@ class FaskesController extends Controller
 
             // Haversine formula (km)
             $haversine = "(6371 * acos(cos(radians({$lat})) * cos(radians(faskes.latitude)) * cos(radians(faskes.longitude) - radians({$lng})) + sin(radians({$lat})) * sin(radians(faskes.latitude))))";
-            
+
             $query->select('faskes.*')
-                  ->selectRaw("{$haversine} AS distance_km")
-                  ->whereNotNull('faskes.latitude')
-                  ->whereNotNull('faskes.longitude');
+                ->selectRaw("{$haversine} AS distance_km")
+                ->whereNotNull('faskes.latitude')
+                ->whereNotNull('faskes.longitude');
 
             // Filter radius jika diberikan
             if ($request->filled('radius')) {
@@ -138,7 +138,7 @@ class FaskesController extends Controller
 
             $query->orderBy('distance_km', 'asc');
         } else {
-            $query->select('faskes.*')->orderBy('faskes.id', 'asc');
+            $query->select('faskes.*')->orderBy('faskes.id_faskes', 'asc');
         }
 
         $limitCount = min((int) $request->input('limit', $request->input('per_page', 30)), 300);
@@ -147,23 +147,23 @@ class FaskesController extends Controller
         if ($request->boolean('all') || $request->input('paginate') === 'false') {
             $faskes = $query->limit($limitCount)->get();
 
-            $faskesIds = $faskes->pluck('id')->toArray();
-            $comments = DB::table('faskes_comments')
-                ->whereIn('faskes_id', $faskesIds)
-                ->select('faskes_id', DB::raw('ROUND(AVG(rating), 1) as avg_rating'), DB::raw('COUNT(id) as total_reviews'))
-                ->groupBy('faskes_id')
+            $faskesIds = $faskes->pluck('id_faskes')->toArray();
+            $comments = DB::table('feedback_faskes')
+                ->whereIn('id_faskes', $faskesIds)
+                ->select('id_faskes', DB::raw('0 as avg_rating'), DB::raw('COUNT(id_feedback_faskes) as total_reviews'))
+                ->groupBy('id_faskes')
                 ->get()
-                ->keyBy('faskes_id');
+                ->keyBy('id_faskes');
 
             $faskes->transform(function ($item) use ($comments) {
-                $item->type_slug = $this->getTypeSlug($item->tipe);
-                $item->nama_faskes = $this->formatFaskesName($item->nama_faskes, $item->type_slug, $item->tipe);
-                $hasComment = isset($comments[$item->id]) && $comments[$item->id]->total_reviews > 0;
-                $item->avg_rating = $hasComment ? (string)$comments[$item->id]->avg_rating : null;
-                $item->total_reviews = $hasComment ? (int)$comments[$item->id]->total_reviews : 0;
+                $item->type_slug = $this->getTypeSlug($item->jenis_faskes);
+                $item->nama_faskes = $this->formatFaskesName($item->nama_faskes, $item->type_slug, $item->jenis_faskes);
+                $hasComment = isset($comments[$item->id_faskes]) && $comments[$item->id_faskes]->total_reviews > 0;
+                $item->avg_rating = $hasComment ? (string) $comments[$item->id_faskes]->avg_rating : null;
+                $item->total_reviews = $hasComment ? (int) $comments[$item->id_faskes]->total_reviews : 0;
                 $hasSpecific = !empty($item->link_maps) && !in_array($item->link_maps, ['-', 'TRUE', 'FALSE']) && str_starts_with($item->link_maps, 'http') && (str_contains($item->link_maps, '@') || str_contains($item->link_maps, 'place') || str_contains($item->link_maps, 'maps.app.goo.gl') || str_contains($item->link_maps, 'dir'));
                 if (!$hasSpecific) {
-                    $item->link_maps = $this->getGoogleMapsUrl($item->nama_faskes, $item->latitude ?? null, $item->longitude ?? null, $item->kota_kabupaten ?? '', $item->alamat ?? '');
+                    $item->link_maps = $this->getGoogleMapsUrl($item->nama_faskes, $item->latitude ?? null, $item->longitude ?? null, $item->kota_kabupaten ?? '', $item->alamat_faskes ?? '');
                 }
                 return $item;
             });
@@ -178,23 +178,23 @@ class FaskesController extends Controller
 
         $paginated = $query->paginate($limitCount);
 
-        $faskesIds = $paginated->getCollection()->pluck('id')->toArray();
-        $comments = DB::table('faskes_comments')
-            ->whereIn('faskes_id', $faskesIds)
-            ->select('faskes_id', DB::raw('ROUND(AVG(rating), 1) as avg_rating'), DB::raw('COUNT(id) as total_reviews'))
-            ->groupBy('faskes_id')
+        $faskesIds = $paginated->getCollection()->pluck('id_faskes')->toArray();
+        $comments = DB::table('feedback_faskes')
+            ->whereIn('id_faskes', $faskesIds)
+            ->select('id_faskes', DB::raw('0 as avg_rating'), DB::raw('COUNT(id_feedback_faskes) as total_reviews'))
+            ->groupBy('id_faskes')
             ->get()
-            ->keyBy('faskes_id');
+            ->keyBy('id_faskes');
 
         $paginated->getCollection()->transform(function ($item) use ($comments) {
-            $item->type_slug = $this->getTypeSlug($item->tipe);
-            $item->nama_faskes = $this->formatFaskesName($item->nama_faskes, $item->type_slug, $item->tipe);
-            $hasComment = isset($comments[$item->id]) && $comments[$item->id]->total_reviews > 0;
-            $item->avg_rating = $hasComment ? (string)$comments[$item->id]->avg_rating : null;
-            $item->total_reviews = $hasComment ? (int)$comments[$item->id]->total_reviews : 0;
+            $item->type_slug = $this->getTypeSlug($item->jenis_faskes);
+            $item->nama_faskes = $this->formatFaskesName($item->nama_faskes, $item->type_slug, $item->jenis_faskes);
+            $hasComment = isset($comments[$item->id_faskes]) && $comments[$item->id_faskes]->total_reviews > 0;
+            $item->avg_rating = $hasComment ? (string) $comments[$item->id_faskes]->avg_rating : null;
+            $item->total_reviews = $hasComment ? (int) $comments[$item->id_faskes]->total_reviews : 0;
             $hasSpecific = !empty($item->link_maps) && !in_array($item->link_maps, ['-', 'TRUE', 'FALSE']) && str_starts_with($item->link_maps, 'http') && (str_contains($item->link_maps, '@') || str_contains($item->link_maps, 'place') || str_contains($item->link_maps, 'maps.app.goo.gl') || str_contains($item->link_maps, 'dir'));
             if (!$hasSpecific) {
-                $item->link_maps = $this->getGoogleMapsUrl($item->nama_faskes, $item->latitude ?? null, $item->longitude ?? null, $item->kota_kabupaten ?? '', $item->alamat ?? '');
+                $item->link_maps = $this->getGoogleMapsUrl($item->nama_faskes, $item->latitude ?? null, $item->longitude ?? null, $item->kota_kabupaten ?? '', $item->alamat_faskes ?? '');
             }
             return $item;
         });
@@ -209,44 +209,43 @@ class FaskesController extends Controller
     // 2. Ambil detail spesifik satu Faskes (buat halaman detail)
     public function show($id)
     {
-        // 1. Ambil data utama faskesnya beserta agregasi rating
+        // 1. Ambil data utama faskesnya beserta agregasi feedback
         $faskes = DB::table('faskes')
-            ->leftJoin('faskes_comments', 'faskes.id', '=', 'faskes_comments.faskes_id')
-            ->where('faskes.id', $id)
+            ->leftJoin('feedback_faskes', 'faskes.id_faskes', '=', 'feedback_faskes.id_faskes')
+            ->where('faskes.id_faskes', $id)
             ->select(
                 'faskes.*',
-                DB::raw('ROUND(AVG(faskes_comments.rating), 1) as avg_rating'),
-                DB::raw('COUNT(faskes_comments.id) as total_reviews')
+                DB::raw('0 as avg_rating'),
+                DB::raw('COUNT(feedback_faskes.id_feedback_faskes) as total_reviews')
             )
-            ->groupBy('faskes.id')
+            ->groupBy('faskes.id_faskes')
             ->first();
 
         if (!$faskes) {
             return response()->json(['message' => 'Fasilitas kesehatan tidak ditemukan'], 404);
         }
 
-        $faskes->type_slug = $this->getTypeSlug($faskes->tipe);
-        $faskes->nama_faskes = $this->formatFaskesName($faskes->nama_faskes, $faskes->type_slug, $faskes->tipe);
-        if ($faskes->total_reviews == 0 || $faskes->avg_rating === null) {
+        $faskes->type_slug = $this->getTypeSlug($faskes->jenis_faskes);
+        $faskes->nama_faskes = $this->formatFaskesName($faskes->nama_faskes, $faskes->type_slug, $faskes->jenis_faskes);
+        if ($faskes->total_reviews == 0) {
             $faskes->avg_rating = null;
         } else {
-            $faskes->avg_rating = (string)$faskes->avg_rating;
+            $faskes->avg_rating = (string) $faskes->avg_rating;
         }
 
         $hasSpecific = !empty($faskes->link_maps) && !in_array($faskes->link_maps, ['-', 'TRUE', 'FALSE']) && str_starts_with($faskes->link_maps, 'http') && (str_contains($faskes->link_maps, '@') || str_contains($faskes->link_maps, 'place') || str_contains($faskes->link_maps, 'maps.app.goo.gl') || str_contains($faskes->link_maps, 'dir'));
         if (!$hasSpecific) {
-            $faskes->link_maps = $this->getGoogleMapsUrl($faskes->nama_faskes, $faskes->latitude ?? null, $faskes->longitude ?? null, $faskes->kota_kabupaten ?? '', $faskes->alamat ?? '');
+            $faskes->link_maps = $this->getGoogleMapsUrl($faskes->nama_faskes, $faskes->latitude ?? null, $faskes->longitude ?? null, $faskes->kota_kabupaten ?? '', $faskes->alamat_faskes ?? '');
         }
 
-        // 2. Ambil semua ulasan dan rating yang terhubung ke faskes ini
-        $reviews = DB::table('faskes_comments')
-            ->join('users', 'faskes_comments.user_id', '=', 'users.id')
-            ->where('faskes_comments.faskes_id', $id)
-            ->select('faskes_comments.*', 'users.name as reviewer_name', 'users.email as reviewer_email')
-            ->orderBy('faskes_comments.created_at', 'desc')
+        // 2. Ambil semua ulasan yang terhubung ke faskes ini
+        $reviews = DB::table('feedback_faskes')
+            ->join('user', 'feedback_faskes.id_user', '=', 'user.id_user')
+            ->where('feedback_faskes.id_faskes', $id)
+            ->select('feedback_faskes.*', 'user.nama_user as reviewer_name', 'user.email_user as reviewer_email')
+            ->orderBy('feedback_faskes.id_feedback_faskes', 'desc')
             ->get();
 
-        // 3. Gabungkan data faskes dan ulasannya
         return response()->json([
             'status' => 'success',
             'message' => 'Berhasil mengambil detail faskes',
@@ -262,18 +261,18 @@ class FaskesController extends Controller
     {
         $request->validate([
             'nama_faskes' => 'required|string|max:255',
-            'tipe' => 'required|string|max:100',
-            'alamat' => 'required|string',
+            'jenis_faskes' => 'required|string|max:100',
+            'alamat_faskes' => 'required|string',
             'kota_kabupaten' => 'nullable|string|max:100',
             'provinsi' => 'nullable|string|max:100',
             'kelas' => 'nullable|string|max:10',
-            'is_support_bpjs' => 'nullable',
+            '_support_bpjs' => 'nullable',
             'latitude' => 'nullable|numeric',
             'longitude' => 'nullable|numeric',
             'link_maps' => 'nullable|string',
         ]);
 
-        $bpjsInput = $request->input('is_support_bpjs');
+        $bpjsInput = $request->input('_support_bpjs');
         $isBpjs = null;
         if ($bpjsInput !== null && $bpjsInput !== '' && $bpjsInput !== 'unknown') {
             $isBpjs = filter_var($bpjsInput, FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
@@ -286,24 +285,22 @@ class FaskesController extends Controller
 
         $namaFaskes = trim($request->nama_faskes);
         $kotaKab = $request->kota_kabupaten ?? 'Jakarta Selatan';
-        $lat = $request->filled('latitude') ? (float)$request->latitude : null;
-        $lng = $request->filled('longitude') ? (float)$request->longitude : null;
+        $lat = $request->filled('latitude') ? (float) $request->latitude : null;
+        $lng = $request->filled('longitude') ? (float) $request->longitude : null;
         $linkMaps = trim($request->input('link_maps', '') ?? '');
 
         // Smart link & coordinate extraction
         if (!empty($linkMaps) && $linkMaps !== '-' && $linkMaps !== 'TRUE' && $linkMaps !== 'FALSE') {
-            // If coordinates not provided manually, extract from link_maps
             if ($lat === null || $lng === null) {
                 if (preg_match('/[?&](?:q|destination)=([-+]?\d{1,3}(?:\.\d+)?),([-+]?\d{1,3}(?:\.\d+)?)/i', $linkMaps, $m)) {
-                    $lat = (float)$m[1];
-                    $lng = (float)$m[2];
+                    $lat = (float) $m[1];
+                    $lng = (float) $m[2];
                 } elseif (preg_match('/@([-+]?\d{1,3}(?:\.\d+)?),([-+]?\d{1,3}(?:\.\d+)?)/i', $linkMaps, $m)) {
-                    $lat = (float)$m[1];
-                    $lng = (float)$m[2];
+                    $lat = (float) $m[1];
+                    $lng = (float) $m[2];
                 }
             }
         } else {
-            // Generate link_maps automatically based on coordinates or name
             if ($lat !== null && $lng !== null) {
                 $linkMaps = "https://www.google.com/maps/search/?api=1&query={$lat},{$lng}";
             } else {
@@ -313,18 +310,16 @@ class FaskesController extends Controller
 
         $id = DB::table('faskes')->insertGetId([
             'nama_faskes' => $namaFaskes,
-            'tipe' => $request->tipe,
+            'jenis_faskes' => $request->jenis_faskes,
             'kelas' => $kelasInput,
             'provinsi' => $request->provinsi ?? 'DKI Jakarta',
             'kota_kabupaten' => $kotaKab,
             'kecamatan' => $request->kecamatan ?? null,
-            'alamat' => $request->alamat,
+            'alamat_faskes' => $request->alamat_faskes,
             'link_maps' => $linkMaps,
             'latitude' => $lat,
             'longitude' => $lng,
-            'is_support_bpjs' => $isBpjs,
-            'created_at' => now(),
-            'updated_at' => now(),
+            '_support_bpjs' => $isBpjs,
         ]);
 
         return response()->json([
@@ -337,30 +332,30 @@ class FaskesController extends Controller
     // 4. Update Data Faskes (Admin)
     public function update(Request $request, $id)
     {
-        $faskes = DB::table('faskes')->where('id', $id)->first();
+        $faskes = DB::table('faskes')->where('id_faskes', $id)->first();
         if (!$faskes) {
             return response()->json(['message' => 'Fasilitas kesehatan tidak ditemukan'], 404);
         }
 
         $request->validate([
             'nama_faskes' => 'sometimes|required|string|max:255',
-            'tipe' => 'sometimes|required|string|max:100',
-            'alamat' => 'sometimes|required|string',
+            'jenis_faskes' => 'sometimes|required|string|max:100',
+            'alamat_faskes' => 'sometimes|required|string',
             'kota_kabupaten' => 'nullable|string|max:100',
             'provinsi' => 'nullable|string|max:100',
             'kelas' => 'nullable|string|max:50',
-            'is_support_bpjs' => 'nullable',
+            '_support_bpjs' => 'nullable',
             'latitude' => 'nullable|numeric',
             'longitude' => 'nullable|numeric',
             'link_maps' => 'nullable|string',
         ]);
 
-        $updateData = [
-            'updated_at' => now(),
-        ];
+        $updateData = [];
 
-        if ($request->has('nama_faskes')) $updateData['nama_faskes'] = $request->nama_faskes;
-        if ($request->has('tipe')) $updateData['tipe'] = $request->tipe;
+        if ($request->has('nama_faskes'))
+            $updateData['nama_faskes'] = $request->nama_faskes;
+        if ($request->has('jenis_faskes'))
+            $updateData['jenis_faskes'] = $request->jenis_faskes;
         if ($request->has('kelas')) {
             $kelasVal = $request->kelas;
             if ($kelasVal === '' || $kelasVal === 'unknown' || $kelasVal === 'Tidak Diketahui') {
@@ -369,33 +364,34 @@ class FaskesController extends Controller
                 $updateData['kelas'] = $kelasVal;
             }
         }
-        if ($request->has('provinsi')) $updateData['provinsi'] = $request->provinsi;
-        if ($request->has('kota_kabupaten')) $updateData['kota_kabupaten'] = $request->kota_kabupaten;
-        if ($request->has('alamat')) $updateData['alamat'] = $request->alamat;
+        if ($request->has('provinsi'))
+            $updateData['provinsi'] = $request->provinsi;
+        if ($request->has('kota_kabupaten'))
+            $updateData['kota_kabupaten'] = $request->kota_kabupaten;
+        if ($request->has('alamat_faskes'))
+            $updateData['alamat_faskes'] = $request->alamat_faskes;
 
-        $targetLat = $request->has('latitude') && $request->filled('latitude') ? (float)$request->latitude : ($faskes->latitude !== null ? (float)$faskes->latitude : null);
-        $targetLng = $request->has('longitude') && $request->filled('longitude') ? (float)$request->longitude : ($faskes->longitude !== null ? (float)$faskes->longitude : null);
+        $targetLat = $request->has('latitude') && $request->filled('latitude') ? (float) $request->latitude : ($faskes->latitude !== null ? (float) $faskes->latitude : null);
+        $targetLng = $request->has('longitude') && $request->filled('longitude') ? (float) $request->longitude : ($faskes->longitude !== null ? (float) $faskes->longitude : null);
 
         if ($request->has('link_maps')) {
             $linkMaps = trim($request->input('link_maps', '') ?? '');
             if (!empty($linkMaps) && $linkMaps !== '-' && $linkMaps !== 'TRUE' && $linkMaps !== 'FALSE') {
-                // If coordinates in link, extract if lat/lng not manually provided
                 if (!$request->filled('latitude') || !$request->filled('longitude')) {
                     if (preg_match('/[?&](?:q|destination)=([-+]?\d{1,3}(?:\.\d+)?),([-+]?\d{1,3}(?:\.\d+)?)/i', $linkMaps, $m)) {
-                        $targetLat = (float)$m[1];
-                        $targetLng = (float)$m[2];
+                        $targetLat = (float) $m[1];
+                        $targetLng = (float) $m[2];
                         $updateData['latitude'] = $targetLat;
                         $updateData['longitude'] = $targetLng;
                     } elseif (preg_match('/@([-+]?\d{1,3}(?:\.\d+)?),([-+]?\d{1,3}(?:\.\d+)?)/i', $linkMaps, $m)) {
-                        $targetLat = (float)$m[1];
-                        $targetLng = (float)$m[2];
+                        $targetLat = (float) $m[1];
+                        $targetLng = (float) $m[2];
                         $updateData['latitude'] = $targetLat;
                         $updateData['longitude'] = $targetLng;
                     }
                 }
                 $updateData['link_maps'] = $linkMaps;
             } else {
-                // Auto-generate link based on coordinates if link_maps emptied
                 if ($targetLat !== null && $targetLng !== null) {
                     $updateData['link_maps'] = "https://www.google.com/maps/search/?api=1&query={$targetLat},{$targetLng}";
                 } else {
@@ -406,19 +402,21 @@ class FaskesController extends Controller
             }
         }
 
-        if ($request->has('latitude')) $updateData['latitude'] = $request->filled('latitude') ? (float)$request->latitude : null;
-        if ($request->has('longitude')) $updateData['longitude'] = $request->filled('longitude') ? (float)$request->longitude : null;
+        if ($request->has('latitude'))
+            $updateData['latitude'] = $request->filled('latitude') ? (float) $request->latitude : null;
+        if ($request->has('longitude'))
+            $updateData['longitude'] = $request->filled('longitude') ? (float) $request->longitude : null;
 
-        if ($request->has('is_support_bpjs')) {
-            $bpjsVal = $request->is_support_bpjs;
+        if ($request->has('_support_bpjs')) {
+            $bpjsVal = $request->_support_bpjs;
             if ($bpjsVal === '' || $bpjsVal === 'unknown' || $bpjsVal === 'null' || $bpjsVal === null) {
-                $updateData['is_support_bpjs'] = null;
+                $updateData['_support_bpjs'] = null;
             } else {
-                $updateData['is_support_bpjs'] = filter_var($bpjsVal, FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
+                $updateData['_support_bpjs'] = filter_var($bpjsVal, FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
             }
         }
 
-        DB::table('faskes')->where('id', $id)->update($updateData);
+        DB::table('faskes')->where('id_faskes', $id)->update($updateData);
 
         return response()->json([
             'status' => 'success',
@@ -429,12 +427,12 @@ class FaskesController extends Controller
     // 5. Hapus Faskes (Admin)
     public function destroy($id)
     {
-        $faskes = DB::table('faskes')->where('id', $id)->first();
+        $faskes = DB::table('faskes')->where('id_faskes', $id)->first();
         if (!$faskes) {
             return response()->json(['message' => 'Fasilitas kesehatan tidak ditemukan'], 404);
         }
 
-        DB::table('faskes')->where('id', $id)->delete();
+        DB::table('faskes')->where('id_faskes', $id)->delete();
 
         return response()->json([
             'status' => 'success',
@@ -445,9 +443,9 @@ class FaskesController extends Controller
     // 6. Ambil Statistik Dashboard Admin
     public function getAdminStats()
     {
-        $totalUsers = DB::table('users')->count();
+        $totalUsers = DB::table('user')->count();
         $totalFaskes = DB::table('faskes')->count();
-        $totalDiscussions = DB::table('discussions')->count();
+        $totalDiscussions = DB::table('diskusi')->count();
 
         // Sample recent activity logs
         $activities = [

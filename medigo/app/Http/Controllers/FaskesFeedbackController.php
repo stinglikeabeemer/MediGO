@@ -2,8 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Faskes;
-use App\Models\FaskesFeedback;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\PersonalAccessToken;
@@ -16,7 +14,7 @@ class FaskesFeedbackController extends Controller
      */
     public function store(Request $request, $faskes_id)
     {
-        $faskes = Faskes::find($faskes_id);
+        $faskes = DB::table('faskes')->where('id_faskes', $faskes_id)->first();
         if (!$faskes) {
             return response()->json(['status' => 'error', 'message' => 'Fasilitas kesehatan tidak ditemukan.'], 404);
         }
@@ -35,29 +33,33 @@ class FaskesFeedbackController extends Controller
 
         // Check if user is authenticated via Sanctum token
         if ($request->user()) {
-            $userId = $request->user()->id;
-            $userName = $userName ?: $request->user()->name;
-            $userEmail = $userEmail ?: $request->user()->email;
+            $userId = $request->user()->id_user ?? $request->user()->id;
+            $userName = $userName ?: ($request->user()->nama_user ?? $request->user()->name);
+            $userEmail = $userEmail ?: ($request->user()->email_user ?? $request->user()->email);
         } elseif ($bearer = $request->bearerToken()) {
             $tokenObj = PersonalAccessToken::findToken($bearer);
             if ($tokenObj && $tokenObj->tokenable) {
                 $user = $tokenObj->tokenable;
-                $userId = $user->id;
-                $userName = $userName ?: $user->name;
-                $userEmail = $userEmail ?: $user->email;
+                $userId = $user->id_user ?? $user->id;
+                $userName = $userName ?: ($user->nama_user ?? $user->name);
+                $userEmail = $userEmail ?: ($user->email_user ?? $user->email);
             }
         }
 
-        $feedback = FaskesFeedback::create([
-            'faskes_id' => $faskes_id,
-            'user_id' => $userId,
-            'user_name' => $userName ?: 'Pengguna Anonim',
-            'user_email' => $userEmail,
-            'category' => $request->input('category'),
-            'notes' => $request->input('notes'),
-            'suggested_correction' => $request->input('suggested_correction'),
+        $feedbackId = DB::table('feedback_faskes')->insertGetId([
+            'id_faskes' => $faskes_id,
+            'id_user' => $userId,
+            'nama_pengguna' => $userName ?: 'Pengguna Anonim',
+            'email_pengguna' => $userEmail,
+            'kategori' => $request->input('category'),
+            'catatan' => $request->input('notes'),
+            'saran_koreksi' => $request->input('suggested_correction'),
             'status' => 'pending',
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
+
+        $feedback = DB::table('feedback_faskes')->where('id_feedback_faskes', $feedbackId)->first();
 
         return response()->json([
             'status' => 'success',
@@ -71,21 +73,21 @@ class FaskesFeedbackController extends Controller
      */
     public function indexAdmin(Request $request)
     {
-        $feedbacks = DB::table('faskes_feedbacks')
-            ->join('faskes', 'faskes_feedbacks.faskes_id', '=', 'faskes.id')
-            ->leftJoin('users', 'faskes_feedbacks.user_id', '=', 'users.id')
+        $feedbacks = DB::table('feedback_faskes')
+            ->join('faskes', 'feedback_faskes.id_faskes', '=', 'faskes.id_faskes')
+            ->leftJoin('user', 'feedback_faskes.id_user', '=', 'user.id_user')
             ->select(
-                'faskes_feedbacks.*',
+                'feedback_faskes.*',
                 'faskes.nama_faskes',
-                'faskes.tipe as faskes_tipe',
+                'faskes.jenis_faskes as faskes_tipe',
                 'faskes.kota_kabupaten',
-                'faskes.alamat as faskes_alamat',
+                'faskes.alamat_faskes as faskes_alamat',
                 'faskes.link_maps as faskes_link_maps',
-                'faskes.is_support_bpjs as faskes_bpjs',
-                'users.name as registered_user_name',
-                'users.email as registered_user_email'
+                'faskes._support_bpjs as faskes_bpjs',
+                'user.nama_user as registered_user_name',
+                'user.email_user as registered_user_email'
             )
-            ->orderBy('faskes_feedbacks.created_at', 'desc')
+            ->orderBy('feedback_faskes.created_at', 'desc')
             ->get();
 
         return response()->json([
@@ -95,30 +97,37 @@ class FaskesFeedbackController extends Controller
     }
 
     /**
-     * Admin: Update status of a feedback (reviewed, applied, rejected)
+     * Admin: Update status of a feedback (resolved, dismissed)
      */
     public function updateStatus(Request $request, $id)
     {
         $request->validate([
-            'status' => 'required|in:pending,reviewed,applied,rejected',
-            'admin_notes' => 'nullable|string|max:1000'
+            'status' => 'required|in:pending,resolved,dismissed',
+            'catatan_admin' => 'nullable|string|max:1000'
         ]);
 
-        $feedback = FaskesFeedback::find($id);
+        $feedback = DB::table('feedback_faskes')->where('id_feedback_faskes', $id)->first();
         if (!$feedback) {
             return response()->json(['status' => 'error', 'message' => 'Feedback tidak ditemukan.'], 404);
         }
 
-        $feedback->status = $request->input('status');
-        if ($request->has('admin_notes')) {
-            $feedback->admin_notes = $request->input('admin_notes');
+        $updateData = [
+            'status' => $request->input('status'),
+            'updated_at' => now(),
+        ];
+
+        if ($request->has('catatan_admin')) {
+            $updateData['catatan_admin'] = $request->input('catatan_admin');
         }
-        $feedback->save();
+
+        DB::table('feedback_faskes')->where('id_feedback_faskes', $id)->update($updateData);
+
+        $updatedFeedback = DB::table('feedback_faskes')->where('id_feedback_faskes', $id)->first();
 
         return response()->json([
             'status' => 'success',
             'message' => 'Status masukan data faskes berhasil diperbarui.',
-            'data' => $feedback
+            'data' => $updatedFeedback
         ]);
     }
 }

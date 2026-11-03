@@ -14,15 +14,16 @@ class AuthController extends Controller
     {
         $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users',
+            // Sesuaikan validasi unique ke tabel 'user' dan kolom 'email_user'
+            'email' => 'required|string|email|max:255|unique:user,email_user',
             'password' => 'required|string|min:8',
         ]);
 
         $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-            'role' => 'user', // Default langsung jadi user biasa
+            'nama_user' => $request->name,
+            'email_user' => $request->email,
+            'password_user' => Hash::make($request->password),
+            'role_user' => 'user', // Default langsung jadi user biasa
         ]);
 
         $token = $user->createToken('medigo_token')->plainTextToken;
@@ -42,9 +43,11 @@ class AuthController extends Controller
             'password' => 'required',
         ]);
 
-        $user = User::where('email', $request->email)->first();
+        // Cari berdasarkan email_user
+        $user = User::where('email_user', $request->email)->first();
 
-        if (!$user || !Hash::check($request->password, $user->password)) {
+        // Cek hash password_user
+        if (!$user || !Hash::check($request->password, $user->password_user)) {
             throw ValidationException::withMessages([
                 'email' => ['Email atau password salah.'],
             ]);

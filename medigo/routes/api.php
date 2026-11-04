@@ -4,7 +4,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\FaskesController;
-use App\Http\Controllers\BookmarkController;
 use App\Http\Controllers\DiscussionController;
 use App\Http\Controllers\DiscussionCommentController;
 use App\Http\Controllers\FaskesCommentController;
@@ -16,26 +15,30 @@ use App\Http\Middleware\AdminMiddleware;
 // Rute Publik
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
-Route::post('/auth/token-by-email', function (\Illuminate\Http\Request $request) {
+
+Route::post('/auth/token-by-email', function (Request $request) {
     $email = $request->input('email');
     if (!$email) {
         return response()->json(['message' => 'Email required'], 400);
     }
-    $user = \App\Models\User::where('email', $email)->first();
+
+    $user = \App\Models\User::where('email_user', $email)->first();
     if (!$user) {
         $user = \App\Models\User::create([
-            'name' => $request->input('name', explode('@', $email)[0]),
-            'email' => $email,
-            'password' => \Illuminate\Support\Facades\Hash::make('password123'),
-            'role' => 'user',
+            'nama_user' => $request->input('name', explode('@', $email)[0]),
+            'email_user' => $email,
+            'password_user' => \Illuminate\Support\Facades\Hash::make('password123'),
+            'role_user' => 'user',
         ]);
     }
+
     $token = $user->createToken('medigo_token')->plainTextToken;
     return response()->json([
         'access_token' => $token,
         'user' => $user
     ]);
 });
+
 Route::get('/faskes', [FaskesController::class, 'index']);
 Route::get('/faskes/{id}', [FaskesController::class, 'show']);
 Route::get('/faskes/{faskes_id}/comments', [FaskesCommentController::class, 'index']);
@@ -51,9 +54,9 @@ Route::get('/discussions/{id}', [DiscussionController::class, 'show']); // Lihat
 
 // Rute Terproteksi (Wajib punya Token / udah Login)
 Route::middleware('auth:sanctum')->group(function () {
-    
+
     Route::post('/logout', [AuthController::class, 'logout']);
-    
+
     // Cek profil user yang lagi login
     Route::get('/user', function (Request $request) {
         return $request->user();
@@ -61,10 +64,6 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/user/discussions', [DiscussionController::class, 'myDiscussions']);
     Route::get('/user/comments', [DiscussionController::class, 'myComments']);
-
-    // Rute Bookmark (Wajib bawa Token)
-    Route::get('/bookmarks', [BookmarkController::class, 'index']);
-    Route::post('/faskes/{faskes_id}/bookmark', [BookmarkController::class, 'toggleBookmark']);
 
     // Rute Kasih Rating & Review ke Faskes (CRUD)
     Route::post('/faskes/{faskes_id}/comments', [FaskesCommentController::class, 'store']);
